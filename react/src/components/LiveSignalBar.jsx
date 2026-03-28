@@ -16,9 +16,33 @@ export default function LiveSignalBar({
   const lostPct = Math.round((lost || 0) * 100);
 
   const segments = [
-    { key: "got_it", pct: gotItPct, label: "Got It", color: "#16a34a", bg: "bg-green-600", light: "bg-green-50", text: "text-green-700", icon: CheckCircleOutlineIcon },
-    { key: "sort_of", pct: sortOfPct, label: "Sort Of", color: "#d97706", bg: "bg-amber-500", light: "bg-amber-50", text: "text-amber-700", icon: HelpOutlineIcon },
-    { key: "lost", pct: lostPct, label: "Lost", color: "#dc2626", bg: "bg-red-600", light: "bg-red-50", text: "text-red-700", icon: ErrorOutlineIcon },
+    {
+      key: "got_it",
+      pct: gotItPct,
+      label: "Got It",
+      bg: "bg-green-600",
+      light: "bg-green-50",
+      text: "text-green-700",
+      icon: CheckCircleOutlineIcon,
+    },
+    {
+      key: "sort_of",
+      pct: sortOfPct,
+      label: "Sort Of",
+      bg: "bg-amber-500",
+      light: "bg-amber-50",
+      text: "text-amber-700",
+      icon: HelpOutlineIcon,
+    },
+    {
+      key: "lost",
+      pct: lostPct,
+      label: "Lost",
+      bg: "bg-red-600",
+      light: "bg-red-50",
+      text: "text-red-700",
+      icon: ErrorOutlineIcon,
+    },
   ];
 
   return (
@@ -33,7 +57,6 @@ export default function LiveSignalBar({
         </div>
       </div>
 
-      {/* Stacked bar */}
       <div className="signal-bar-track" style={{ height: 12 }}>
         {segments.map(({ key, pct, bg }) => (
           <div
@@ -44,7 +67,6 @@ export default function LiveSignalBar({
         ))}
       </div>
 
-      {/* Stats row */}
       <div className="grid grid-cols-3 gap-2">
         {segments.map(({ key, pct, label, light, text, icon: Icon }) => (
           <div key={key} className={`${light} rounded-lg px-3 py-2.5 text-center`}>
@@ -57,7 +79,6 @@ export default function LiveSignalBar({
         ))}
       </div>
 
-      {/* Reliability indicator */}
       {reliableCount > 0 && (
         <div className="flex items-center gap-1.5">
           <div
@@ -67,8 +88,8 @@ export default function LiveSignalBar({
           />
           <span className="text-xs text-slate-500">
             {reliableCount >= 5
-              ? `Signal reliable — ${reliableCount} responses`
-              : `Low sample — ${reliableCount} responses (need ≥5)`}
+              ? `Signal reliable - ${reliableCount} responses`
+              : `Low sample - ${reliableCount} responses (need >=5)`}
           </span>
         </div>
       )}

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import QuizOutlinedIcon from "@mui/icons-material/QuizOutlined";
 import AddOutlinedIcon from "@mui/icons-material/AddOutlined";
 import SendOutlinedIcon from "@mui/icons-material/SendOutlined";
@@ -6,7 +6,7 @@ import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
 import { pushQuiz } from "../services/api";
 
-const OPTION_LABELS = ["A", "B", "C", "D"];
+const OPTION_LABELS = ["A", "B", "C", "D", "E", "F"];
 
 export default function QuizPanel({ sessionId, liveResponses = {} }) {
   const [question, setQuestion] = useState("");
@@ -16,36 +16,68 @@ export default function QuizPanel({ sessionId, liveResponses = {} }) {
   const [pushedQuiz, setPushedQuiz] = useState(null);
   const [error, setError] = useState(null);
 
+  useEffect(() => {
+    if (!pushedQuiz) return;
+    setPushedQuiz((current) => (current ? { ...current, responses: liveResponses } : current));
+  }, [liveResponses, pushedQuiz]);
+
   const addOption = () => {
-    if (options.length < 4) setOptions((prev) => [...prev, ""]);
+    if (options.length < OPTION_LABELS.length) {
+      setOptions((prev) => [...prev, ""]);
+    }
   };
 
   const removeOption = (idx) => {
     if (options.length <= 2) return;
-    setOptions((prev) => prev.filter((_, i) => i !== idx));
+    setOptions((prev) => prev.filter((_, optionIndex) => optionIndex !== idx));
     if (correctIndex === idx) setCorrectIndex(null);
-    if (correctIndex > idx) setCorrectIndex((c) => c - 1);
+    if (correctIndex > idx) setCorrectIndex((current) => current - 1);
   };
 
-  const updateOption = (idx, val) => {
-    setOptions((prev) => prev.map((o, i) => (i === idx ? val : o)));
+  const updateOption = (idx, value) => {
+    setOptions((prev) =>
+      prev.map((optionValue, optionIndex) => (optionIndex === idx ? value : optionValue))
+    );
   };
 
   const handlePush = async () => {
-    if (!question.trim() || options.some((o) => !o.trim())) {
-      setError("Fill in the question and all options.");
+    const trimmedQuestion = question.trim();
+    const trimmedOptions = options.map((option) => option.trim()).filter(Boolean);
+
+    if (!trimmedQuestion) {
+      setError("Enter a quiz question before pushing.");
       return;
     }
+
+    if (trimmedOptions.length < 2 || trimmedOptions.length !== options.length) {
+      setError("Enter at least two non-empty options.");
+      return;
+    }
+
+    if (correctIndex === null || correctIndex < 0 || correctIndex >= trimmedOptions.length) {
+      setError("Mark one of the entered options as the correct answer.");
+      return;
+    }
+
     setLoading(true);
     setError(null);
+
     try {
       const res = await pushQuiz({
         session_id: sessionId,
-        question,
-        options,
+        question: trimmedQuestion,
+        options: trimmedOptions,
         correct_index: correctIndex,
       });
-      setPushedQuiz(res.quiz || res);
+
+      const quiz = res.quiz || res;
+      setPushedQuiz({
+        ...quiz,
+        question: quiz.question || trimmedQuestion,
+        options: quiz.options || trimmedOptions,
+        correct_index:
+          quiz.correct_index !== undefined ? quiz.correct_index : correctIndex,
+      });
     } catch (e) {
       setError(e.response?.data?.detail || "Failed to push quiz.");
     } finally {
@@ -53,7 +85,10 @@ export default function QuizPanel({ sessionId, liveResponses = {} }) {
     }
   };
 
-  const totalResponses = Object.values(liveResponses).reduce((a, b) => a + b, 0);
+  const totalResponses = Object.values(liveResponses).reduce(
+    (sum, value) => sum + value,
+    0
+  );
 
   if (pushedQuiz) {
     return (
@@ -62,18 +97,29 @@ export default function QuizPanel({ sessionId, liveResponses = {} }) {
           <span className="text-sm font-semibold text-slate-700">Active Quiz</span>
           <span className="badge-green badge">Live</span>
         </div>
+
         <div className="card p-4">
           <p className="text-sm font-medium text-slate-800 mb-3">
             {pushedQuiz.question}
           </p>
+
           <div className="flex flex-col gap-2">
-            {(pushedQuiz.options || []).map((opt, idx) => {
+            {(pushedQuiz.options || []).map((option, idx) => {
               const count = liveResponses[idx] || 0;
               const pct = totalResponses > 0 ? Math.round((count / totalResponses) * 100) : 0;
+              const isCorrect = pushedQuiz.correct_index === idx;
+
               return (
-                <div key={idx} className="relative overflow-hidden rounded border border-slate-200">
+                <div
+                  key={idx}
+                  className={`relative overflow-hidden rounded border ${
+                    isCorrect ? "border-green-300" : "border-slate-200"
+                  }`}
+                >
                   <div
-                    className="absolute inset-y-0 left-0 bg-brand-50 transition-all duration-500"
+                    className={`absolute inset-y-0 left-0 transition-all duration-500 ${
+                      isCorrect ? "bg-green-50" : "bg-brand-50"
+                    }`}
                     style={{ width: `${pct}%` }}
                   />
                   <div className="relative flex items-center justify-between px-3 py-2">
@@ -81,21 +127,34 @@ export default function QuizPanel({ sessionId, liveResponses = {} }) {
                       <span className="w-5 h-5 rounded bg-slate-100 text-xs font-bold flex items-center justify-center text-slate-600">
                         {OPTION_LABELS[idx]}
                       </span>
-                      <span className="text-sm text-slate-700">{opt}</span>
+                      <span className="text-sm text-slate-700">{option}</span>
+                      {isCorrect && (
+                        <span className="text-[11px] uppercase tracking-wide font-semibold text-green-700">
+                          Correct
+                        </span>
+                      )}
                     </div>
-                    <span className="text-xs font-semibold text-brand-700">{pct}%</span>
+                    <span className="text-xs font-semibold text-slate-700">
+                      {count} ({pct}%)
+                    </span>
                   </div>
                 </div>
               );
             })}
           </div>
+
           <div className="mt-3 pt-3 border-t border-slate-100 text-xs text-slate-500 flex items-center justify-between">
-            <span>{totalResponses} response{totalResponses !== 1 ? "s" : ""}</span>
+            <span>{totalResponses} responses received</span>
             <button
-              onClick={() => { setPushedQuiz(null); setQuestion(""); setOptions(["", ""]); setCorrectIndex(null); }}
+              onClick={() => {
+                setPushedQuiz(null);
+                setQuestion("");
+                setOptions(["", ""]);
+                setCorrectIndex(null);
+              }}
               className="text-brand-600 hover:text-brand-800 font-medium"
             >
-              New Quiz
+              Push Another Quiz
             </button>
           </div>
         </div>
@@ -121,7 +180,7 @@ export default function QuizPanel({ sessionId, liveResponses = {} }) {
         <textarea
           className="input resize-none"
           rows={2}
-          placeholder="Type your quiz question…"
+          placeholder="Type your quiz question..."
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
         />
@@ -130,7 +189,7 @@ export default function QuizPanel({ sessionId, liveResponses = {} }) {
       <div>
         <label className="label">Options</label>
         <div className="flex flex-col gap-1.5">
-          {options.map((opt, idx) => (
+          {options.map((option, idx) => (
             <div key={idx} className="flex items-center gap-2">
               <button
                 onClick={() => setCorrectIndex(idx)}
@@ -140,6 +199,7 @@ export default function QuizPanel({ sessionId, liveResponses = {} }) {
                     : "border-slate-300 hover:border-green-400"
                 }`}
                 title="Mark as correct"
+                type="button"
               >
                 {correctIndex === idx && (
                   <CheckCircleOutlineIcon sx={{ fontSize: 12, color: "white" }} />
@@ -151,13 +211,14 @@ export default function QuizPanel({ sessionId, liveResponses = {} }) {
               <input
                 className="input flex-1"
                 placeholder={`Option ${OPTION_LABELS[idx]}`}
-                value={opt}
+                value={option}
                 onChange={(e) => updateOption(idx, e.target.value)}
               />
               {options.length > 2 && (
                 <button
                   onClick={() => removeOption(idx)}
                   className="text-slate-400 hover:text-red-500 transition-colors"
+                  type="button"
                 >
                   <DeleteOutlineIcon sx={{ fontSize: 16 }} />
                 </button>
@@ -165,10 +226,12 @@ export default function QuizPanel({ sessionId, liveResponses = {} }) {
             </div>
           ))}
         </div>
-        {options.length < 4 && (
+
+        {options.length < OPTION_LABELS.length && (
           <button
             onClick={addOption}
             className="mt-2 btn-ghost btn-sm btn text-xs"
+            type="button"
           >
             <AddOutlinedIcon sx={{ fontSize: 13 }} />
             Add Option
@@ -182,7 +245,7 @@ export default function QuizPanel({ sessionId, liveResponses = {} }) {
         className="btn-primary btn w-full justify-center"
       >
         <SendOutlinedIcon sx={{ fontSize: 15 }} />
-        {loading ? "Pushing…" : "Push to Students"}
+        {loading ? "Pushing..." : "Push to Students"}
       </button>
     </div>
   );

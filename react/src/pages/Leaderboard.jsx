@@ -1,20 +1,40 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { useLocation } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
-import { getLeaderboard } from "../services/api";
+import { getAdminLeaderboard, getLeaderboard } from "../services/api";
 
 import EmojiEventsOutlinedIcon from "@mui/icons-material/EmojiEventsOutlined";
 import FilterListOutlinedIcon from "@mui/icons-material/FilterListOutlined";
 import SearchOutlinedIcon from "@mui/icons-material/SearchOutlined";
+import TrendingUpOutlinedIcon from "@mui/icons-material/TrendingUpOutlined";
+import TrendingDownOutlinedIcon from "@mui/icons-material/TrendingDownOutlined";
 
-const medalColors = [
-  "from-yellow-400 to-amber-500",
-  "from-slate-300 to-slate-400",
-  "from-amber-600 to-amber-700",
-];
+function trendBadge(trend) {
+  if (trend === undefined || trend === null || trend === "") {
+    return <span className="badge badge-slate">No trend</span>;
+  }
 
-const medalEmojis = ["🥇", "🥈", "🥉"];
+  const numeric = Number(trend);
+  if (!Number.isNaN(numeric)) {
+    return numeric >= 0 ? (
+      <span className="badge badge-green">
+        <TrendingUpOutlinedIcon sx={{ fontSize: 12 }} />
+        +{numeric}
+      </span>
+    ) : (
+      <span className="badge badge-red">
+        <TrendingDownOutlinedIcon sx={{ fontSize: 12 }} />
+        {numeric}
+      </span>
+    );
+  }
+
+  return <span className="badge badge-slate">{String(trend)}</span>;
+}
 
 export default function Leaderboard() {
+  const location = useLocation();
+  const isAdminView = location.pathname.startsWith("/admin");
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -22,61 +42,70 @@ export default function Leaderboard() {
   const [search, setSearch] = useState("");
 
   useEffect(() => {
-    async function fetch() {
+    async function fetchLeaderboard() {
       try {
-        const res = await getLeaderboard();
-        setData(res);
-      } catch (e) {
-        setError(e.response?.data?.detail || "Failed to load leaderboard.");
+        const response = isAdminView
+          ? await getAdminLeaderboard()
+          : await getLeaderboard();
+        setData(response);
+      } catch (fetchError) {
+        setError(fetchError.response?.data?.detail || "Failed to load leaderboard.");
       } finally {
         setLoading(false);
       }
     }
-    fetch();
-  }, []);
 
-  const leaderboard = data?.leaderboard || [];
+    fetchLeaderboard();
+  }, [isAdminView]);
+
+  const leaderboard = useMemo(() => {
+    const list = data?.leaderboard || data?.items || data || [];
+    return [...list].sort(
+      (left, right) =>
+        (right.classpulse_score ?? right.score ?? 0) - (left.classpulse_score ?? left.score ?? 0)
+    );
+  }, [data]);
 
   const departments = useMemo(() => {
-    const depts = new Set();
-    leaderboard.forEach((t) => {
-      if (t.department) depts.add(t.department);
+    const values = new Set();
+    leaderboard.forEach((teacher) => {
+      if (teacher.department) values.add(teacher.department);
     });
-    return Array.from(depts).sort();
+    return Array.from(values).sort();
   }, [leaderboard]);
 
   const filtered = useMemo(() => {
     let list = leaderboard;
+
     if (deptFilter !== "all") {
-      list = list.filter((t) => t.department === deptFilter);
+      list = list.filter((teacher) => teacher.department === deptFilter);
     }
+
     if (search.trim()) {
-      const q = search.toLowerCase();
+      const query = search.toLowerCase();
       list = list.filter(
-        (t) =>
-          (t.name || "").toLowerCase().includes(q) ||
-          (t.subject || "").toLowerCase().includes(q)
+        (teacher) =>
+          (teacher.name || "").toLowerCase().includes(query) ||
+          (teacher.subject || "").toLowerCase().includes(query)
       );
     }
-    return list;
-  }, [leaderboard, deptFilter, search]);
 
-  const top3 = filtered.slice(0, 3);
-  const rest = filtered.slice(3);
+    return list;
+  }, [deptFilter, leaderboard, search]);
 
   return (
     <div className="flex min-h-screen bg-slate-50">
-      <Sidebar variant="admin" />
+      <Sidebar variant={isAdminView ? "admin" : "teacher"} />
 
       <main className="flex-1 overflow-y-auto">
-        <div className="max-w-5xl mx-auto px-6 lg:px-10 py-8">
+        <div className="max-w-6xl mx-auto px-6 lg:px-10 py-8">
           <div className="page-header">
             <div>
-              <h1 className="font-display text-2xl font-bold text-slate-900">
-                Leaderboard
-              </h1>
+              <h1 className="font-display text-2xl font-bold text-slate-900">Leaderboard</h1>
               <p className="text-sm text-slate-500 mt-0.5">
-                Top teachers by ClassPulse score
+                {isAdminView
+                  ? "University ranking sorted by ClassPulse score"
+                  : "Teacher-visible leaderboard for current university performance"}
               </p>
             </div>
           </div>
@@ -91,160 +120,108 @@ export default function Leaderboard() {
             </div>
           ) : leaderboard.length === 0 ? (
             <div className="empty-state py-20">
-              <EmojiEventsOutlinedIcon
-                sx={{ fontSize: 40, color: "#94a3b8" }}
-              />
-              <p className="text-base font-semibold text-slate-500 mt-3">
-                No leaderboard data
-              </p>
+              <EmojiEventsOutlinedIcon sx={{ fontSize: 40, color: "#94a3b8" }} />
+              <p className="text-base font-semibold text-slate-500 mt-3">No leaderboard data</p>
               <p className="text-sm text-slate-400 mt-1">
-                Scores will appear after teachers complete sessions.
+                Scores will appear after teachers complete scored sessions.
               </p>
             </div>
           ) : (
             <>
-              {/* Filters */}
               <div className="flex items-center gap-3 mb-6 flex-wrap">
                 <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-3 py-1.5 flex-1 max-w-xs">
-                  <SearchOutlinedIcon
-                    sx={{ fontSize: 16, color: "#94a3b8" }}
-                  />
+                  <SearchOutlinedIcon sx={{ fontSize: 16, color: "#94a3b8" }} />
                   <input
                     type="text"
-                    placeholder="Search teacher or subject…"
+                    placeholder="Search teacher or subject..."
                     value={search}
-                    onChange={(e) => setSearch(e.target.value)}
+                    onChange={(event) => setSearch(event.target.value)}
                     className="bg-transparent border-0 outline-none text-sm text-slate-700 w-full placeholder-slate-400"
                   />
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <FilterListOutlinedIcon
-                    sx={{ fontSize: 16, color: "#64748b" }}
-                  />
+                  <FilterListOutlinedIcon sx={{ fontSize: 16, color: "#64748b" }} />
                   <select
                     value={deptFilter}
-                    onChange={(e) => setDeptFilter(e.target.value)}
+                    onChange={(event) => setDeptFilter(event.target.value)}
                     className="text-sm bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-slate-700 outline-none focus:ring-2 focus:ring-brand-500"
                   >
                     <option value="all">All Departments</option>
-                    {departments.map((d) => (
-                      <option key={d} value={d}>
-                        {d}
+                    {departments.map((department) => (
+                      <option key={department} value={department}>
+                        {department}
                       </option>
                     ))}
                   </select>
                 </div>
               </div>
 
-              {/* Top 3 Podium */}
-              {top3.length > 0 && (
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-                  {top3.map((t, i) => (
-                    <div
-                      key={t.rank || i}
-                      className={`card p-5 text-center relative overflow-hidden ${
-                        i === 0
-                          ? "border-amber-300 bg-gradient-to-b from-amber-50 to-white shadow-md"
-                          : ""
-                      }`}
-                    >
-                      {/* Medal */}
-                      <div className="text-3xl mb-2">
-                        {medalEmojis[i] || ""}
-                      </div>
-                      <div
-                        className={`w-14 h-14 rounded-full bg-gradient-to-br ${
-                          medalColors[i] || "from-slate-200 to-slate-300"
-                        } flex items-center justify-center mx-auto mb-3 shadow-sm`}
-                      >
-                        <span className="text-white font-display font-bold text-lg">
-                          {(t.name || "?")[0].toUpperCase()}
-                        </span>
-                      </div>
-                      <p className="font-semibold text-sm text-slate-800 truncate">
-                        {t.name}
-                      </p>
-                      <p className="text-xs text-slate-500 mt-0.5 truncate">
-                        {[t.department, t.subject]
-                          .filter(Boolean)
-                          .join(" · ") || "—"}
-                      </p>
-                      <p
-                        className={`font-display text-2xl font-bold mt-3 ${
-                          i === 0 ? "text-amber-600" : "text-slate-700"
-                        }`}
-                      >
-                        {Math.round(t.classpulse_score ?? 0)}
-                      </p>
-                      <p className="text-xs text-slate-400 uppercase tracking-wide">
+              <div className="card overflow-hidden">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200">
+                      <th className="text-left text-xs font-semibold text-slate-500 uppercase tracking-wide px-5 py-3">
+                        Rank
+                      </th>
+                      <th className="text-left text-xs font-semibold text-slate-500 uppercase tracking-wide px-5 py-3">
+                        Teacher
+                      </th>
+                      <th className="text-left text-xs font-semibold text-slate-500 uppercase tracking-wide px-5 py-3">
+                        Department
+                      </th>
+                      <th className="text-left text-xs font-semibold text-slate-500 uppercase tracking-wide px-5 py-3">
+                        Subject
+                      </th>
+                      {isAdminView && (
+                        <th className="text-left text-xs font-semibold text-slate-500 uppercase tracking-wide px-5 py-3">
+                          Sessions
+                        </th>
+                      )}
+                      <th className="text-left text-xs font-semibold text-slate-500 uppercase tracking-wide px-5 py-3">
+                        Trend
+                      </th>
+                      <th className="text-right text-xs font-semibold text-slate-500 uppercase tracking-wide px-5 py-3">
                         Score
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Table */}
-              {rest.length > 0 && (
-                <div className="card overflow-hidden">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="bg-slate-50 border-b border-slate-200">
-                        <th className="text-left text-xs font-semibold text-slate-500 uppercase tracking-wide px-5 py-3">
-                          Rank
-                        </th>
-                        <th className="text-left text-xs font-semibold text-slate-500 uppercase tracking-wide px-5 py-3">
-                          Teacher
-                        </th>
-                        <th className="text-left text-xs font-semibold text-slate-500 uppercase tracking-wide px-5 py-3">
-                          Department
-                        </th>
-                        <th className="text-left text-xs font-semibold text-slate-500 uppercase tracking-wide px-5 py-3">
-                          Subject
-                        </th>
-                        <th className="text-right text-xs font-semibold text-slate-500 uppercase tracking-wide px-5 py-3">
-                          Score
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rest.map((t, i) => (
-                        <tr
-                          key={t.rank || i + 4}
-                          className="border-b border-slate-100 last:border-0 hover:bg-slate-50 transition-colors"
-                        >
-                          <td className="px-5 py-3 text-sm text-slate-600 font-medium">
-                            #{t.rank || i + 4}
-                          </td>
-                          <td className="px-5 py-3">
-                            <div className="flex items-center gap-2.5">
-                              <div className="w-7 h-7 rounded-full bg-brand-100 flex items-center justify-center shrink-0">
-                                <span className="text-xs font-bold text-brand-700">
-                                  {(t.name || "?")[0].toUpperCase()}
-                                </span>
-                              </div>
-                              <span className="text-sm font-medium text-slate-800">
-                                {t.name}
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map((teacher, index) => (
+                      <tr
+                        key={teacher.teacher_id || teacher.id || index}
+                        className="border-b border-slate-100 last:border-0 hover:bg-slate-50 transition-colors"
+                      >
+                        <td className="px-5 py-3 text-sm text-slate-600 font-medium">
+                          #{teacher.rank || index + 1}
+                        </td>
+                        <td className="px-5 py-3">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-7 h-7 rounded-full bg-brand-100 flex items-center justify-center shrink-0">
+                              <span className="text-xs font-bold text-brand-700">
+                                {(teacher.name || "?")[0].toUpperCase()}
                               </span>
                             </div>
-                          </td>
+                            <span className="text-sm font-medium text-slate-800">{teacher.name}</span>
+                          </div>
+                        </td>
+                        <td className="px-5 py-3 text-sm text-slate-600">{teacher.department || "-"}</td>
+                        <td className="px-5 py-3 text-sm text-slate-600">{teacher.subject || "-"}</td>
+                        {isAdminView && (
                           <td className="px-5 py-3 text-sm text-slate-600">
-                            {t.department || "—"}
+                            {teacher.session_count ?? 0}
                           </td>
-                          <td className="px-5 py-3 text-sm text-slate-600">
-                            {t.subject || "—"}
-                          </td>
-                          <td className="px-5 py-3 text-right">
-                            <span className="font-display font-bold text-sm text-slate-800">
-                              {Math.round(t.classpulse_score ?? 0)}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+                        )}
+                        <td className="px-5 py-3 text-sm text-slate-600">{trendBadge(teacher.trend)}</td>
+                        <td className="px-5 py-3 text-right">
+                          <span className="font-display font-bold text-sm text-slate-800">
+                            {Math.round(teacher.classpulse_score ?? teacher.score ?? 0)}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </>
           )}
         </div>

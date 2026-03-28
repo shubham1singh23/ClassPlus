@@ -15,18 +15,36 @@ api.interceptors.request.use(async (config) => {
   if (getTokenFn) {
     try {
       const token = await getTokenFn();
-      if (token) config.headers.Authorization = `Bearer ${token}`;
-    } catch (e) {
-      console.warn("Token fetch failed", e);
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+        if (import.meta.env.DEV && config.url?.includes("/auth/me")) {
+          console.log("[api] /auth/me auth header attached", {
+            backend: config.baseURL,
+            url: config.url,
+            hasAuthorizationHeader: Boolean(config.headers.Authorization),
+            authorizationPreview: String(config.headers.Authorization).slice(0, 20) + "...",
+          });
+        }
+      } else if (import.meta.env.DEV && config.url?.includes("/auth/me")) {
+        console.warn("[api] /auth/me missing Clerk token before request", {
+          backend: config.baseURL,
+          url: config.url,
+        });
+      }
+    } catch (error) {
+      console.warn("Token fetch failed", error);
     }
   }
   return config;
 });
 
-// ─── Sessions ────────────────────────────────────────────────────────────────
-
 export async function createSession(payload) {
   const res = await api.post("/sessions/create", payload);
+  return res.data;
+}
+
+export async function getBackendMe() {
+  const res = await api.get("/auth/me");
   return res.data;
 }
 
@@ -52,19 +70,17 @@ export async function getSessionSummary(sessionId) {
   return res.data;
 }
 
-// ─── Signals / Quiz ──────────────────────────────────────────────────────────
-
 export async function pushQuiz(payload) {
   const res = await api.post("/signals/quiz/push", payload);
   return res.data;
 }
 
 export async function acknowledgeQuestion(questionId) {
-  const res = await api.post(`/signals/question/${questionId}/acknowledge`);
+  const res = await api.post(`/signals/question/${questionId}/acknowledge`, {
+    acknowledged: true,
+  });
   return res.data;
 }
-
-// ─── AI ──────────────────────────────────────────────────────────────────────
 
 export async function submitBoardDetect(formData) {
   const res = await api.post("/ai/board-detect", formData, {
@@ -82,20 +98,18 @@ export async function submitBoardOcr(formData) {
 
 export async function getNotesUrl(sessionId) {
   const res = await api.get(`/ai/session/${sessionId}/notes-url`);
-  return res.data;
+  return { status: res.status, ...res.data };
 }
 
 export async function getVideoUrl(sessionId) {
   const res = await api.get(`/ai/session/${sessionId}/video-url`);
-  return res.data;
+  return { status: res.status, ...res.data };
 }
 
 export async function summariseDoubts(sessionId) {
   const res = await api.post("/ai/summarise-doubts", { session_id: sessionId });
   return res.data;
 }
-
-// ─── Teacher ─────────────────────────────────────────────────────────────────
 
 export async function getTeacherSessions(page = 1, limit = 20) {
   const res = await api.get("/teacher/sessions", { params: { page, limit } });
@@ -112,7 +126,15 @@ export async function getLeaderboard() {
   return res.data;
 }
 
-// ─── Admin ───────────────────────────────────────────────────────────────────
+export async function getAdminLeaderboard() {
+  const res = await api.get("/admin/leaderboard");
+  return res.data;
+}
+
+export async function registerUniversity(payload) {
+  const res = await api.post("/admin/university/register", payload);
+  return res.data;
+}
 
 export async function createTeacher(payload) {
   const res = await api.post("/admin/teachers/create", payload);
@@ -131,13 +153,28 @@ export async function getTeachers() {
   return res.data;
 }
 
+export async function deleteTeacher(teacherId) {
+  const res = await api.delete(`/admin/teachers/${teacherId}`);
+  return res.data;
+}
+
 export async function createBatch(payload) {
   const res = await api.post("/admin/batches/create", payload);
   return res.data;
 }
 
+export async function getBatches() {
+  const res = await api.get("/admin/batches");
+  return res.data;
+}
+
 export async function getAdminAnalytics() {
   const res = await api.get("/admin/analytics");
+  return res.data;
+}
+
+export async function recalculateScores() {
+  const res = await api.post("/admin/recalculate-scores");
   return res.data;
 }
 

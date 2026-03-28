@@ -1,19 +1,11 @@
 import React, { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { SignIn, SignUp, useUser } from "@clerk/clerk-react";
+import { useBackendAuth } from "../services/backendAuth.jsx";
 import BoltOutlinedIcon from "@mui/icons-material/BoltOutlined";
 import SchoolOutlinedIcon from "@mui/icons-material/SchoolOutlined";
 import InsightsOutlinedIcon from "@mui/icons-material/InsightsOutlined";
 import LiveTvOutlinedIcon from "@mui/icons-material/LiveTvOutlined";
-
-function isAdmin(user) {
-  const role = user?.publicMetadata?.role;
-  if (role === "admin" || role === "dept_head") return true;
-  const memberships = user?.organizationMemberships || [];
-  return memberships.some(
-    (m) => m.role === "admin" || m.role === "org:admin"
-  );
-}
 
 const features = [
   {
@@ -35,16 +27,27 @@ const features = [
 
 export default function LandingPage() {
   const { isSignedIn, user, isLoaded } = useUser();
+  const { loading, backendUser, error } = useBackendAuth();
   const navigate = useNavigate();
   const [mode, setMode] = React.useState("signin");
 
   useEffect(() => {
-    if (isLoaded && isSignedIn && user) {
-      navigate(isAdmin(user) ? "/admin" : "/teacher", { replace: true });
+    if (isLoaded && !loading && isSignedIn && user) {
+      if (backendUser?.needs_university_registration) {
+        navigate("/admin", { replace: true });
+        return;
+      }
+      if (backendUser?.can_access_admin) {
+        navigate("/admin", { replace: true });
+        return;
+      }
+      if (backendUser?.can_access_teacher) {
+        navigate("/teacher", { replace: true });
+      }
     }
-  }, [isLoaded, isSignedIn, user, navigate]);
+  }, [backendUser, isLoaded, isSignedIn, loading, navigate, user]);
 
-  if (!isLoaded) {
+  if (!isLoaded || (isSignedIn && loading)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="w-8 h-8 border-3 border-brand-600 border-t-transparent rounded-full animate-spin" />
@@ -52,7 +55,26 @@ export default function LandingPage() {
     );
   }
 
-  if (isSignedIn) return null;
+  if (isSignedIn && (backendUser?.can_access_teacher || backendUser?.can_access_admin || backendUser?.needs_university_registration)) {
+    return null;
+  }
+
+  if (isSignedIn && !loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 px-6">
+        <div className="max-w-md text-center space-y-3">
+          <h2 className="font-display text-xl font-bold text-slate-900">
+            {error ? "Backend Authentication Failed" : "Backend Access Not Ready"}
+          </h2>
+          <p className="text-sm text-slate-500">
+            {error
+              ? `The frontend could not validate your Clerk session with the backend.${error.status ? ` Status: ${error.status}.` : ""} ${error.message}`
+              : "Your Clerk session is active, but this account is not fully set up in the backend yet. If you are the first university admin, open `/admin` to register the university. If you are a teacher, ask your admin to create your teacher account from the admin portal."}
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-brand-50 flex flex-col">
